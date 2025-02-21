@@ -5,6 +5,7 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 
@@ -73,7 +74,15 @@ public class FileEncryptor {
         try (FileInputStream fis = new FileInputStream(inputFile)) {
             // Read the salt from the beginning of the file
             byte[] salt = new byte[SALT_SIZE];
-            fis.read(salt);
+            int saltBytesRead;
+            int offset = 0;
+            while (offset < SALT_SIZE && (saltBytesRead = fis.read(salt, offset, SALT_SIZE - offset)) != -1) {
+                offset += saltBytesRead;
+            }
+
+            if (offset < SALT_SIZE) {
+                throw new IOException("Could not read the complete salt from the encrypted file");
+            }
 
             // Generate the decryption key
             SecretKey key = generateKey(password, salt);
@@ -100,6 +109,7 @@ public class FileEncryptor {
             }
         }
     }
+
 
     public static void main(String[] args) {
         try {
