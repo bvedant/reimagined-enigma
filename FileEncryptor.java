@@ -8,8 +8,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class FileEncryptor {
+    private static final Logger LOGGER = Logger.getLogger(FileEncryptor.class.getName());
     private static final String ALGORITHM = "AES";
     private static final int KEY_SIZE = 256;
     private static final int ITERATIONS = 65536;
@@ -136,8 +139,8 @@ public class FileEncryptor {
                     System.out.println("Invalid mode. Use 'encrypt' or 'decrypt'.");
             }
         } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error during file encryption/decryption", e);
             System.err.println("Error: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 }
