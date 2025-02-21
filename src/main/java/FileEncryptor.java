@@ -1,6 +1,7 @@
 import javax.crypto.*;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -8,6 +9,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
+import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -16,8 +18,6 @@ public class FileEncryptor {
     private static final String ALGORITHM = "AES";
     private static final int KEY_SIZE = 256;
     private static final int ITERATIONS = 65536;
-
-    // Salt size for additional security
     private static final int SALT_SIZE = 32;
 
     /**
@@ -120,19 +120,66 @@ public class FileEncryptor {
         }
     }
 
+    /**
+     * Gets and validates file path from user input
+     */
+    private static String getValidFilePath(Scanner scanner, String prompt, boolean shouldExist) {
+        while (true) {
+            System.out.print(prompt);
+            String filePath = scanner.nextLine().trim();
+            File file = new File(filePath);
 
-    public static void main(String[] args) {
-        try {
-            if (args.length != 4) {
-                System.out.println("Usage: java FileEncryptor [encrypt/decrypt] [input file] [output file] [password]");
-                return;
+            if (shouldExist) {
+                if (!file.exists()) {
+                    System.out.println("Error: File does not exist. Please enter a valid file path.");
+                    continue;
+                }
+                if (!file.canRead()) {
+                    System.out.println("Error: Cannot read file. Please check permissions.");
+                    continue;
+                }
+            } else {
+                File parentDir = file.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    System.out.println("Error: Directory does not exist. Please enter a valid file path.");
+                    continue;
+                }
+                if (parentDir != null && !parentDir.canWrite()) {
+                    System.out.println("Error: Cannot write to directory. Please check permissions.");
+                    continue;
+                }
             }
 
-            String mode = args[0].toLowerCase();
-            String inputFile = args[1];
-            String outputFile = args[2];
-            String password = args[3];
+            return filePath;
+        }
+    }
 
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        try {
+            // Get operation mode
+            String mode;
+            while (true) {
+                System.out.print("Enter mode (encrypt/decrypt): ");
+                mode = scanner.nextLine().toLowerCase().trim();
+                if (mode.equals("encrypt") || mode.equals("decrypt")) {
+                    break;
+                }
+                System.out.println("Invalid mode. Please enter 'encrypt' or 'decrypt'.");
+            }
+
+            // Get input file path
+            String inputFile = getValidFilePath(scanner, "Enter input file path: ", true);
+
+            // Get output file path
+            String outputFile = getValidFilePath(scanner, "Enter output file path: ", false);
+
+            // Get password
+            System.out.print("Enter password: ");
+            String password = scanner.nextLine();
+
+            // Perform the requested operation
             switch (mode) {
                 case "encrypt":
                     encryptFile(inputFile, outputFile, password);
@@ -147,8 +194,6 @@ public class FileEncryptor {
                         System.err.println("Error: Incorrect password or corrupted file");
                     }
                     break;
-                default:
-                    System.out.println("Invalid mode. Use 'encrypt' or 'decrypt'.");
             }
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "File I/O error", e);
@@ -156,6 +201,8 @@ public class FileEncryptor {
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error during file encryption/decryption", e);
             System.err.println("Error: " + e.getMessage());
+        } finally {
+            scanner.close();
         }
     }
 }
