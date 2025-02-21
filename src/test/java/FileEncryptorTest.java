@@ -306,7 +306,7 @@ class FileEncryptorTest {
         byte[] fileContent = Files.readAllBytes(encryptedFile);
         // Modify the last block (last 16 bytes since AES uses 16-byte blocks)
         for (int i = fileContent.length - 16; i < fileContent.length; i++) {
-            fileContent[i] ^= 0xFF; // Flip all bits in the last block
+            fileContent[i] ^= (byte) 0xFF; // Flip all bits in the last block
         }
         Files.write(encryptedFile, fileContent);
 
