@@ -1,11 +1,11 @@
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
+import javax.crypto.*;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.logging.Level;
@@ -73,7 +73,9 @@ public class FileEncryptor {
     /**
      * Decrypts a file that was encrypted using AES encryption
      */
-    public static void decryptFile(String inputFile, String outputFile, String password) throws Exception {
+    public static void decryptFile(String inputFile, String outputFile, String password)
+            throws IOException, NoSuchAlgorithmException, InvalidKeyException,
+            IllegalBlockSizeException, NoSuchPaddingException, BadPaddingException {
         try (FileInputStream fis = new FileInputStream(inputFile)) {
             // Read the salt from the beginning of the file
             byte[] salt = new byte[SALT_SIZE];
@@ -88,7 +90,12 @@ public class FileEncryptor {
             }
 
             // Generate the decryption key
-            SecretKey key = generateKey(password, salt);
+            SecretKey key;
+            try {
+                key = generateKey(password, salt);
+            } catch (Exception e) {
+                throw new InvalidKeyException("Failed to generate key from password", e);
+            }
 
             // Initialize cipher for decryption
             Cipher cipher = Cipher.getInstance(ALGORITHM);
@@ -132,12 +139,20 @@ public class FileEncryptor {
                     System.out.println("File encrypted successfully!");
                     break;
                 case "decrypt":
-                    decryptFile(inputFile, outputFile, password);
-                    System.out.println("File decrypted successfully!");
+                    try {
+                        decryptFile(inputFile, outputFile, password);
+                        System.out.println("File decrypted successfully!");
+                    } catch (BadPaddingException e) {
+                        LOGGER.log(Level.WARNING, "Decryption failed - likely incorrect password", e);
+                        System.err.println("Error: Incorrect password or corrupted file");
+                    }
                     break;
                 default:
                     System.out.println("Invalid mode. Use 'encrypt' or 'decrypt'.");
             }
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "File I/O error", e);
+            System.err.println("Error: " + e.getMessage());
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error during file encryption/decryption", e);
             System.err.println("Error: " + e.getMessage());
