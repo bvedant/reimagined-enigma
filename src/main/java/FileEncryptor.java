@@ -18,7 +18,7 @@ public class FileEncryptor {
     private static final String ALGORITHM = "AES";
     private static final int KEY_SIZE = 256;
     private static final int ITERATIONS = 65536;
-    private static final int SALT_SIZE = 32;
+    static final int SALT_SIZE = 32;
 
     /**
      * Generates a secure AES key from a password using PBKDF2
@@ -123,7 +123,7 @@ public class FileEncryptor {
     /**
      * Gets and validates file path from user input
      */
-    private static String getValidFilePath(Scanner scanner, String prompt, boolean shouldExist) {
+    static String getValidFilePath(Scanner scanner, String prompt, boolean shouldExist) {
         while (true) {
             System.out.print(prompt);
             String filePath = scanner.nextLine().trim();
