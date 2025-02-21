@@ -155,9 +155,8 @@ public class FileEncryptor {
     }
 
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
 
-        try {
+        try (Scanner scanner = new Scanner(System.in)) {
             // Get operation mode
             String mode;
             while (true) {
@@ -201,8 +200,6 @@ public class FileEncryptor {
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error during file encryption/decryption", e);
             System.err.println("Error: " + e.getMessage());
-        } finally {
-            scanner.close();
         }
     }
 }
