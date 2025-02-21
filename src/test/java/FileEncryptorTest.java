@@ -171,7 +171,7 @@ class FileEncryptorTest {
 
     @Test
     @DisplayName("Test getValidFilePath with existing file")
-    void testGetValidFilePathExisting() throws IOException {
+    void testGetValidFilePathExisting() {
         // Create a mock Scanner that will return our test file path
         String input = inputFile.toString() + "\n";
         Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
@@ -183,7 +183,7 @@ class FileEncryptorTest {
 
     @Test
     @DisplayName("Test getValidFilePath with non-existing file when checking existence")
-    void testGetValidFilePathNonExistingWithCheck() throws IOException {
+    void testGetValidFilePathNonExistingWithCheck() {
         // Create a mock Scanner that will first return invalid path, then valid path
         String nonExistentPath = tempDir.resolve("nonexistent.txt").toString();
         String input = nonExistentPath + "\n" + inputFile.toString() + "\n";
@@ -196,7 +196,7 @@ class FileEncryptorTest {
 
     @Test
     @DisplayName("Test getValidFilePath with non-existing file for output")
-    void testGetValidFilePathForOutput() throws IOException {
+    void testGetValidFilePathForOutput() {
         // Create a mock Scanner that will return a valid output path
         String outputPath = tempDir.resolve("newfile.txt").toString();
         String input = outputPath + "\n";
