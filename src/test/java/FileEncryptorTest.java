@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Scanner;
+import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
 
 class FileEncryptorTest {
@@ -73,11 +74,16 @@ class FileEncryptorTest {
         ));
 
         // Try to decrypt with wrong password
-        assertThrows(BadPaddingException.class, () -> FileEncryptor.decryptFile(
+        IOException exception = assertThrows(IOException.class, () -> FileEncryptor.decryptFile(
                 encryptedFile.toString(),
                 decryptedFile.toString(),
                 WRONG_PASSWORD
         ));
+
+        // Verify the exception chain and messages
+        assertEquals("Decryption failed", exception.getMessage());
+        assertInstanceOf(AEADBadTagException.class, exception.getCause());
+        assertEquals("Tag mismatch", exception.getCause().getMessage());
     }
 
     @Test
@@ -93,7 +99,12 @@ class FileEncryptorTest {
                 )
         );
 
-        assertTrue(exception.getMessage().contains("No such file"));
+        // Check that the top-level exception has the expected message
+        assertEquals("Encryption failed", exception.getMessage());
+
+        // Check that the cause is FileNotFoundException with the expected message
+        assertInstanceOf(FileNotFoundException.class, exception.getCause());
+        assertTrue(exception.getCause().getMessage().contains("No such file or directory"));
     }
 
     @Test
@@ -177,7 +188,7 @@ class FileEncryptorTest {
         Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
 
         // Test the method with shouldExist=true
-        String result = FileEncryptor.getValidFilePath(mockScanner, "Test prompt: ", true);
+        String result = FileEncryptor.getValidFilePath(mockScanner, true);
         assertEquals(inputFile.toString(), result);
     }
 
@@ -190,7 +201,7 @@ class FileEncryptorTest {
         Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
 
         // Test the method with shouldExist=true
-        String result = FileEncryptor.getValidFilePath(mockScanner, "Test prompt: ", true);
+        String result = FileEncryptor.getValidFilePath(mockScanner, true);
         assertEquals(inputFile.toString(), result);
     }
 
@@ -203,7 +214,7 @@ class FileEncryptorTest {
         Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
 
         // Test the method with shouldExist=false
-        String result = FileEncryptor.getValidFilePath(mockScanner, "Test prompt: ", false);
+        String result = FileEncryptor.getValidFilePath(mockScanner, false);
         assertEquals(outputPath, result);
     }
 
@@ -217,47 +228,72 @@ class FileEncryptorTest {
         Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
 
         // Test the method with shouldExist=false
-        String result = FileEncryptor.getValidFilePath(mockScanner, "Test prompt: ", false);
+        String result = FileEncryptor.getValidFilePath(mockScanner, false);
         assertEquals(validPath, result);
     }
 
     @Test
     @DisplayName("Test main method with encryption flow")
-    void testMainMethodEncryption() {
-        // Prepare input for the main method
+    void testMainMethodEncryption() throws Exception {
+        // Use a smaller test content
+        String smallContent = "Small test content";
+        Files.write(inputFile, smallContent.getBytes());
+
+        // Enable silent mode and set test mode property
+        FileEncryptor.setSilentMode(true);
+        System.setProperty("test.mode", "true");
+
+        // Prepare minimal input
         String input = String.format("encrypt\n%s\n%s\n%s\n",
                 inputFile.toString(),
                 encryptedFile.toString(),
                 TEST_PASSWORD);
 
-        // Redirect System.in to our test input
+        // Redirect System.in
         InputStream originalIn = System.in;
         try {
             System.setIn(new ByteArrayInputStream(input.getBytes()));
             FileEncryptor.main(new String[]{});
+
+            // Verify only essential assertions
             assertTrue(Files.exists(encryptedFile));
+            assertTrue(Files.size(encryptedFile) > 0);
         } finally {
             System.setIn(originalIn);
+            System.clearProperty("test.mode");
+            FileEncryptor.setSilentMode(false);
         }
     }
 
     @Test
     @DisplayName("Test main method with invalid mode then encryption")
-    void testMainMethodInvalidMode() {
+    void testMainMethodInvalidMode() throws Exception {
+        // Enable silent mode
+        FileEncryptor.setSilentMode(true);
+
         // Prepare input with invalid mode first, then valid input
         String input = String.format("invalid\nencrypt\n%s\n%s\n%s\n",
                 inputFile.toString(),
                 encryptedFile.toString(),
                 TEST_PASSWORD);
 
-        // Redirect System.in to our test input
-        InputStream originalIn = System.in;
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+
         try {
-            System.setIn(new ByteArrayInputStream(input.getBytes()));
-            FileEncryptor.main(new String[]{});
+            // Redirect output to capture invalid mode message
+            System.setOut(new PrintStream(outContent));
+
+            // Use mainWithScanner directly
+            Scanner scanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+            FileEncryptor.mainWithScanner(scanner);
+
+            // Verify file was created despite invalid initial mode
             assertTrue(Files.exists(encryptedFile));
+            assertTrue(Files.size(encryptedFile) > 0);
         } finally {
-            System.setIn(originalIn);
+            System.setOut(originalOut);
+            FileEncryptor.setSilentMode(false);
         }
     }
 
@@ -271,24 +307,29 @@ class FileEncryptorTest {
                 TEST_PASSWORD
         );
 
+        // Enable silent mode
+        FileEncryptor.setSilentMode(true);
+
         // Prepare input for decryption with wrong password
         String input = String.format("decrypt\n%s\n%s\n%s\n",
                 encryptedFile.toString(),
                 decryptedFile.toString(),
                 WRONG_PASSWORD);
 
-        // Redirect System.in to our test input
-        InputStream originalIn = System.in;
+        // Redirect System.err to capture error output
         PrintStream originalErr = System.err;
         ByteArrayOutputStream errContent = new ByteArrayOutputStream();
         try {
-            System.setIn(new ByteArrayInputStream(input.getBytes()));
             System.setErr(new PrintStream(errContent));
-            FileEncryptor.main(new String[]{});
-            assertTrue(errContent.toString().contains("Incorrect password or corrupted file"));
+
+            // Use mainWithScanner directly instead of main
+            Scanner scanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+            FileEncryptor.mainWithScanner(scanner);
+
+            assertTrue(errContent.toString().contains("Decryption failed"));
         } finally {
-            System.setIn(originalIn);
             System.setErr(originalErr);
+            FileEncryptor.setSilentMode(false);
         }
     }
 
@@ -311,13 +352,18 @@ class FileEncryptorTest {
         Files.write(encryptedFile, fileContent);
 
         // Try to decrypt the corrupted file
-        assertThrows(BadPaddingException.class, () ->
+        IOException exception = assertThrows(IOException.class, () ->
                 FileEncryptor.decryptFile(
                         encryptedFile.toString(),
                         decryptedFile.toString(),
                         TEST_PASSWORD
                 )
         );
+
+        // Verify the exception chain and messages
+        assertEquals("Decryption failed", exception.getMessage());
+        assertInstanceOf(AEADBadTagException.class, exception.getCause());
+        assertEquals("Tag mismatch", exception.getCause().getMessage());
     }
 
     @Test
@@ -342,6 +388,12 @@ class FileEncryptorTest {
                 )
         );
 
-        assertTrue(exception.getMessage().contains("Could not read the complete salt"));
+        // Verify top-level exception message
+        assertEquals("Decryption failed", exception.getMessage());
+
+        // Verify the cause's message
+        assertNotNull(exception.getCause());
+        assertInstanceOf(IOException.class, exception.getCause());
+        assertEquals("Could not read the complete salt from the encrypted file", exception.getCause().getMessage());
     }
 }
