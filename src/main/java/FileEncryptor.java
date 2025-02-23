@@ -284,12 +284,9 @@ public final class FileEncryptor {
         try {
             // Get operation mode
             String mode;
-            while (true) {
+            do {
                 mode = scanner.nextLine().toLowerCase().trim();
-                if (mode.equals("encrypt") || mode.equals("decrypt")) {
-                    break;
-                }
-            }
+            } while (!mode.equals("encrypt") && !mode.equals("decrypt"));
 
             // Get file paths and password
             String inputFile = scanner.nextLine().trim();
