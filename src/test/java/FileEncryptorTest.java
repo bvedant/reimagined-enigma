@@ -514,6 +514,7 @@ class FileEncryptorTest {
 
     @Test
     @DisplayName("Test directory permissions")
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     void testDirectoryPermissions() throws Exception {
         // Create a read-only directory
         Path readOnlyDir = tempDir.resolve("readonly");
@@ -545,6 +546,7 @@ class FileEncryptorTest {
 
     @Test
     @DisplayName("Test getValidFilePath with unreadable file")
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     void testGetValidFilePathUnreadableFile() throws IOException {
         // Create a file and make it unreadable
         Path unreadableFile = tempDir.resolve("unreadable.txt");
@@ -552,7 +554,7 @@ class FileEncryptorTest {
         unreadableFile.toFile().setReadable(false);
 
         // Create input with unreadable file path first, then valid file path
-        String input = unreadableFile.toString() + "\n" + inputFile.toString() + "\n";
+        String input = unreadableFile + "\n" + inputFile.toString() + "\n";
         Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
 
         // Test the method with shouldExist=true
@@ -562,6 +564,7 @@ class FileEncryptorTest {
 
     @Test
     @DisplayName("Test getValidFilePath with unwritable parent directory")
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     void testGetValidFilePathUnwritableParentDir() throws IOException {
         // Create a directory and make it unwritable
         Path unwritableDir = tempDir.resolve("unwritable");
