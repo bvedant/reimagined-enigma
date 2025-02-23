@@ -542,4 +542,121 @@ class FileEncryptorTest {
         assertInstanceOf(AssertionError.class, exception.getCause());
         assertEquals("This class should not be instantiated", exception.getCause().getMessage());
     }
+
+    @Test
+    @DisplayName("Test getValidFilePath with unreadable file")
+    void testGetValidFilePathUnreadableFile() throws IOException {
+        // Create a file and make it unreadable
+        Path unreadableFile = tempDir.resolve("unreadable.txt");
+        Files.write(unreadableFile, "test".getBytes());
+        unreadableFile.toFile().setReadable(false);
+
+        // Create input with unreadable file path first, then valid file path
+        String input = unreadableFile.toString() + "\n" + inputFile.toString() + "\n";
+        Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+
+        // Test the method with shouldExist=true
+        String result = FileEncryptor.getValidFilePath(mockScanner, true);
+        assertEquals(inputFile.toString(), result);
+    }
+
+    @Test
+    @DisplayName("Test getValidFilePath with unwritable parent directory")
+    void testGetValidFilePathUnwritableParentDir() throws IOException {
+        // Create a directory and make it unwritable
+        Path unwritableDir = tempDir.resolve("unwritable");
+        Files.createDirectory(unwritableDir);
+        unwritableDir.toFile().setWritable(false);
+
+        // Create input with path in unwritable directory first, then valid path
+        String invalidPath = unwritableDir.resolve("file.txt").toString();
+        String validPath = tempDir.resolve("valid.txt").toString();
+        String input = invalidPath + "\n" + validPath + "\n";
+        Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+
+        // Test the method with shouldExist=false
+        String result = FileEncryptor.getValidFilePath(mockScanner, false);
+        assertEquals(validPath, result);
+    }
+
+    @Test
+    @DisplayName("Test mainWithScanner with invalid mode attempts")
+    void testMainWithScannerMultipleInvalidModes() {
+        // Enable silent mode
+        FileEncryptor.setSilentMode(true);
+
+        // Prepare input with multiple invalid modes before valid input
+        String input = String.format("invalid1\ninvalid2\nrandom\nencrypt\n%s\n%s\n%s\n",
+                inputFile.toString(),
+                encryptedFile.toString(),
+                TEST_PASSWORD);
+
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+
+        try {
+            System.setOut(new PrintStream(outContent));
+            Scanner scanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+            FileEncryptor.mainWithScanner(scanner);
+
+            // Verify encryption succeeded despite invalid modes
+            assertTrue(Files.exists(encryptedFile));
+            assertTrue(Files.size(encryptedFile) > 0);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } finally {
+            System.setOut(originalOut);
+            FileEncryptor.setSilentMode(false);
+        }
+    }
+
+    @Test
+    @DisplayName("Test encryption with exact maximum file size")
+    void testEncryptionWithMaxFileSize() throws Exception {
+        // Create a file exactly at MAX_FILE_SIZE
+        Path maxSizeFile = tempDir.resolve("maxSize.txt");
+        try (RandomAccessFile file = new RandomAccessFile(maxSizeFile.toFile(), "rw")) {
+            file.setLength(1L << 30); // Exactly 1GB
+        }
+
+        // This should not throw an exception
+        assertDoesNotThrow(() -> FileEncryptor.encryptFile(
+                maxSizeFile.toString(),
+                encryptedFile.toString(),
+                TEST_PASSWORD
+        ));
+    }
+
+    @Test
+    @DisplayName("Test progress reporting with small chunks")
+    void testProgressReportingSmallChunks() throws Exception {
+        // Create a test file that will require multiple chunks
+        Path testFile = tempDir.resolve("smallChunks.txt");
+        byte[] content = new byte[16384]; // 16KB (2 chunks with 8KB buffer)
+        Files.write(testFile, content);
+
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        System.setOut(new PrintStream(outContent));
+
+        try {
+            FileEncryptor.setSilentMode(false);
+            FileEncryptor.encryptFile(
+                    testFile.toString(),
+                    encryptedFile.toString(),
+                    TEST_PASSWORD
+            );
+
+            // Verify multiple progress updates
+            String output = outContent.toString();
+            // Should have at least one intermediate progress report
+            assertTrue(output.contains("Progress: 50%") ||
+                    output.contains("Progress: 51%") ||
+                    output.contains("Progress: 49%"));
+            assertTrue(output.contains("Progress: 100%"));
+        } finally {
+            System.setOut(originalOut);
+            FileEncryptor.setSilentMode(false);
+        }
+    }
 }
