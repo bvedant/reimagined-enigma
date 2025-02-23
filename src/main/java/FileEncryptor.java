@@ -154,7 +154,7 @@ public final class FileEncryptor {
         }
     }
 
-    private static void validateInputs(String inputPath, String outputPath, String password) {
+    static void validateInputs(String inputPath, String outputPath, String password) {
         if (inputPath == null || outputPath == null || password == null) {
             throw new IllegalArgumentException("Null arguments not allowed");
         }

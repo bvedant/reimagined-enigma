@@ -4,12 +4,13 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Scanner;
 import javax.crypto.AEADBadTagException;
-import javax.crypto.BadPaddingException;
 
 class FileEncryptorTest {
     private static final String TEST_PASSWORD = "testPassword123";
@@ -395,5 +396,150 @@ class FileEncryptorTest {
         assertNotNull(exception.getCause());
         assertInstanceOf(IOException.class, exception.getCause());
         assertEquals("Could not read the complete salt from the encrypted file", exception.getCause().getMessage());
+    }
+
+    @Test
+    @DisplayName("Test file size validation")
+    void testFileSizeValidation() throws Exception {
+        // Create a file larger than MAX_FILE_SIZE (1GB)
+        Path largeFile = tempDir.resolve("tooBig.txt");
+        try (RandomAccessFile file = new RandomAccessFile(largeFile.toFile(), "rw")) {
+            file.setLength(1L << 30 + 1); // Just over 1GB
+        }
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+                FileEncryptor.encryptFile(
+                        largeFile.toString(),
+                        encryptedFile.toString(),
+                        TEST_PASSWORD
+                )
+        );
+
+        assertTrue(exception.getMessage().contains("File too large"));
+    }
+
+    @Test
+    @DisplayName("Test input validation scenarios")
+    void testInputValidation() {
+        // Test null inputs
+        assertThrows(IllegalArgumentException.class, () ->
+                FileEncryptor.validateInputs(null, "output.txt", "password"));
+        assertThrows(IllegalArgumentException.class, () ->
+                FileEncryptor.validateInputs("input.txt", null, "password"));
+        assertThrows(IllegalArgumentException.class, () ->
+                FileEncryptor.validateInputs("input.txt", "output.txt", null));
+
+        // Test short password
+        assertThrows(IllegalArgumentException.class, () ->
+                FileEncryptor.validateInputs("input.txt", "output.txt", "short"));
+
+        // Test same input/output path
+        assertThrows(IllegalArgumentException.class, () ->
+                FileEncryptor.validateInputs("same.txt", "same.txt", "password123"));
+    }
+
+    @Test
+    @DisplayName("Test version mismatch handling")
+    void testVersionMismatch() throws Exception {
+        // First encrypt a file
+        FileEncryptor.encryptFile(
+                inputFile.toString(),
+                encryptedFile.toString(),
+                TEST_PASSWORD
+        );
+
+        // Modify version number in encrypted file
+        byte[] content = Files.readAllBytes(encryptedFile);
+        content[0] = 2; // Change version to 2
+        Files.write(encryptedFile, content);
+
+        // Attempt to decrypt
+        IOException exception = assertThrows(IOException.class, () ->
+                FileEncryptor.decryptFile(
+                        encryptedFile.toString(),
+                        decryptedFile.toString(),
+                        TEST_PASSWORD
+                )
+        );
+
+        assertEquals("Decryption failed", exception.getMessage());
+        assertEquals("Unsupported version: 2", exception.getCause().getMessage());
+    }
+
+    @Test
+    @DisplayName("Test progress reporting")
+    void testProgressReporting() throws Exception {
+        // Create a test file of known size
+        Path testFile = tempDir.resolve("progress.txt");
+        byte[] content = new byte[100000]; // 100KB
+        Files.write(testFile, content);
+
+        // Capture progress output
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        System.setOut(new PrintStream(outContent));
+
+        try {
+            // Ensure silent mode is off
+            FileEncryptor.setSilentMode(false);
+
+            // Encrypt file
+            FileEncryptor.encryptFile(
+                    testFile.toString(),
+                    encryptedFile.toString(),
+                    TEST_PASSWORD
+            );
+
+            // Verify progress was reported
+            String output = outContent.toString();
+            assertTrue(output.contains("Progress: "));
+            assertTrue(output.contains("100%"));
+
+            // Test silent mode
+            outContent.reset();
+            FileEncryptor.setSilentMode(true);
+            FileEncryptor.encryptFile(
+                    testFile.toString(),
+                    encryptedFile.toString(),
+                    TEST_PASSWORD
+            );
+
+            // Verify no progress was reported
+            assertEquals("", outContent.toString());
+        } finally {
+            System.setOut(originalOut);
+            FileEncryptor.setSilentMode(false);
+        }
+    }
+
+    @Test
+    @DisplayName("Test directory permissions")
+    void testDirectoryPermissions() throws Exception {
+        // Create a read-only directory
+        Path readOnlyDir = tempDir.resolve("readonly");
+        Files.createDirectory(readOnlyDir);
+        readOnlyDir.toFile().setWritable(false);
+
+        Path outputInReadOnlyDir = readOnlyDir.resolve("output.enc");
+
+        // Attempt to encrypt to read-only directory
+        assertThrows(IOException.class, () ->
+                FileEncryptor.encryptFile(
+                        inputFile.toString(),
+                        outputInReadOnlyDir.toString(),
+                        TEST_PASSWORD
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("Test private constructor")
+    void testPrivateConstructor() throws Exception {
+        Constructor<FileEncryptor> constructor = FileEncryptor.class.getDeclaredConstructor();
+        constructor.setAccessible(true);
+
+        InvocationTargetException exception = assertThrows(InvocationTargetException.class, constructor::newInstance);
+        assertInstanceOf(AssertionError.class, exception.getCause());
+        assertEquals("This class should not be instantiated", exception.getCause().getMessage());
     }
 }
