@@ -1,14 +1,24 @@
-import javax.crypto.*;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.*;
+package com.fileencryptor;
+
+import java.io.Console;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
 import java.util.Arrays;
 import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 
 public final class FileEncryptor {
     private static final Logger LOGGER = Logger.getLogger(FileEncryptor.class.getName());
@@ -20,6 +30,26 @@ public final class FileEncryptor {
     public static final int SALT_SIZE = 32;  // Made public for testing
     private static final int VERSION = 1;
     private static final long MAX_FILE_SIZE = 1L << 30; // 1GB limit
+
+    // Password strength requirements
+    private static final int MIN_PASSWORD_LENGTH = 8;
+    private static final int STRONG_PASSWORD_LENGTH = 12;
+    
+    public enum PasswordStrength {
+        WEAK("Weak - Use a longer password with mixed characters"),
+        MEDIUM("Medium - Add more variety of characters"),
+        STRONG("Strong - Good password!");
+        
+        private final String message;
+        
+        PasswordStrength(String message) {
+            this.message = message;
+        }
+        
+        public String getMessage() {
+            return message;
+        }
+    }
 
     // Add silent mode flag
     private static boolean silentMode = false;
@@ -158,11 +188,62 @@ public final class FileEncryptor {
         if (inputPath == null || outputPath == null || password == null) {
             throw new IllegalArgumentException("Null arguments not allowed");
         }
-        if (password.length() < 8) {
+        if (password.length() < MIN_PASSWORD_LENGTH) {
             throw new IllegalArgumentException("Password must be at least 8 characters");
         }
         if (inputPath.equals(outputPath)) {
             throw new IllegalArgumentException("Input and output paths must be different");
+        }
+        
+        // Get password strength and provide feedback if not in silent mode
+        if (!silentMode) {
+            PasswordStrength strength = evaluatePasswordStrength(password);
+            System.out.println("Password strength: " + strength.getMessage());
+        }
+    }
+
+    /**
+     * Evaluates password strength based on multiple criteria
+     * @param password The password to evaluate
+     * @return PasswordStrength enum indicating the strength level
+     */
+    public static PasswordStrength evaluatePasswordStrength(String password) {
+        int score = 0;
+        
+        // Length check
+        if (password.length() >= STRONG_PASSWORD_LENGTH) {
+            score += 2;
+        } else if (password.length() >= MIN_PASSWORD_LENGTH) {
+            score += 1;
+        }
+        
+        // Check for numbers
+        if (password.matches(".*\\d.*")) {
+            score += 1;
+        }
+        
+        // Check for lowercase letters
+        if (password.matches(".*[a-z].*")) {
+            score += 1;
+        }
+        
+        // Check for uppercase letters
+        if (password.matches(".*[A-Z].*")) {
+            score += 1;
+        }
+        
+        // Check for special characters
+        if (password.matches(".*[!@#$%^&*()\\-_=+\\[\\]{}|;:,.<>?].*")) {
+            score += 1;
+        }
+        
+        // Convert score to strength level
+        if (score >= 5) {
+            return PasswordStrength.STRONG;
+        } else if (score >= 3) {
+            return PasswordStrength.MEDIUM;
+        } else {
+            return PasswordStrength.WEAK;
         }
     }
 

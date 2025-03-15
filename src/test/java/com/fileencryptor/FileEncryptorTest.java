@@ -1,9 +1,12 @@
-import static org.junit.jupiter.api.Assertions.*;
+package com.fileencryptor;
 
-import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.io.RandomAccessFile;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
@@ -13,7 +16,21 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Scanner;
 import java.util.Set;
+
 import javax.crypto.AEADBadTagException;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class FileEncryptorTest {
     private static final String TEST_PASSWORD = "testPassword123";
@@ -819,5 +836,76 @@ class FileEncryptorTest {
         // Check error message
         assertEquals("Decryption failed", exception.getMessage());
         assertEquals("Unsupported version: -1", exception.getCause().getMessage());
+    }
+
+    @Test
+    @DisplayName("Test password strength evaluation - Weak passwords")
+    void testWeakPasswords() {
+        // Test short password (but valid for encryption)
+        assertEquals(FileEncryptor.PasswordStrength.WEAK, FileEncryptor.evaluatePasswordStrength("pass1234"));
+        
+        // Test password with only letters
+        assertEquals(FileEncryptor.PasswordStrength.WEAK, FileEncryptor.evaluatePasswordStrength("passwordonly"));
+        
+        // Test password with only numbers
+        assertEquals(FileEncryptor.PasswordStrength.WEAK, FileEncryptor.evaluatePasswordStrength("12345678"));
+    }
+
+    @Test
+    @DisplayName("Test password strength evaluation - Medium passwords")
+    void testMediumPasswords() {
+        // Test password with mixed case and numbers
+        assertEquals(FileEncryptor.PasswordStrength.MEDIUM, FileEncryptor.evaluatePasswordStrength("Password123"));
+        
+        // Test password with special characters but short
+        assertEquals(FileEncryptor.PasswordStrength.MEDIUM, FileEncryptor.evaluatePasswordStrength("Pass@123"));
+        
+        // Test long password but limited character types
+        assertEquals(FileEncryptor.PasswordStrength.MEDIUM, FileEncryptor.evaluatePasswordStrength("passwordpassword123"));
+    }
+
+    @Test
+    @DisplayName("Test password strength evaluation - Strong passwords")
+    void testStrongPasswords() {
+        // Test password with all criteria
+        assertEquals(FileEncryptor.PasswordStrength.STRONG, FileEncryptor.evaluatePasswordStrength("StrongP@ss123"));
+        
+        // Test very long password with mixed characters
+        assertEquals(FileEncryptor.PasswordStrength.STRONG, FileEncryptor.evaluatePasswordStrength("MyVeryStr0ng&SecureP@ssw0rd"));
+        
+        // Test password with various special characters
+        assertEquals(FileEncryptor.PasswordStrength.STRONG, FileEncryptor.evaluatePasswordStrength("P@ssw0rd!@#$%"));
+    }
+
+    @Test
+    @DisplayName("Test password strength feedback in validateInputs")
+    void testPasswordStrengthFeedback() {
+        // Capture stdout to verify feedback
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        System.setOut(new PrintStream(outContent));
+
+        try {
+            // Test with silent mode off
+            FileEncryptor.setSilentMode(false);
+            
+            // Test with a weak password
+            FileEncryptor.validateInputs("input.txt", "output.txt", "password123");
+            assertTrue(outContent.toString().contains("Weak"));
+            outContent.reset();
+            
+            // Test with a strong password
+            FileEncryptor.validateInputs("input.txt", "output.txt", "StrongP@ssw0rd");
+            assertTrue(outContent.toString().contains("Strong"));
+            outContent.reset();
+            
+            // Test with silent mode on
+            FileEncryptor.setSilentMode(true);
+            FileEncryptor.validateInputs("input.txt", "output.txt", "password123");
+            assertEquals("", outContent.toString());
+        } finally {
+            System.setOut(originalOut);
+            FileEncryptor.setSilentMode(false);
+        }
     }
 }
