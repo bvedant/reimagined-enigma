@@ -8,8 +8,11 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Scanner;
+import java.util.Set;
 import javax.crypto.AEADBadTagException;
 
 class FileEncryptorTest {
@@ -661,5 +664,160 @@ class FileEncryptorTest {
             System.setOut(originalOut);
             FileEncryptor.setSilentMode(false);
         }
+    }
+
+    @Test
+    @DisplayName("Test getValidFilePath with non-writable directory")
+    void testGetValidFilePathNonWritableDir() throws IOException {
+        // Skip on Windows
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"));
+
+        // Create a directory with no write permissions
+        Path nonWritableDir = tempDir.resolve("no-write");
+        Files.createDirectory(nonWritableDir);
+
+        try {
+            // Remove write permission
+            Set<PosixFilePermission> permissions = new HashSet<>();
+            permissions.add(PosixFilePermission.OWNER_READ);
+            permissions.add(PosixFilePermission.OWNER_EXECUTE);
+            Files.setPosixFilePermissions(nonWritableDir, permissions);
+
+            // Create input that first attempts a file in the non-writable dir, then a valid path
+            String input = nonWritableDir.resolve("test.txt").toString() + "\n" + decryptedFile.toString() + "\n";
+            Scanner mockScanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+
+            // Test with shouldExist=false (output file scenario)
+            String result = FileEncryptor.getValidFilePath(mockScanner, false);
+            assertEquals(decryptedFile.toString(), result);
+        } catch (UnsupportedOperationException e) {
+            // Skip if setting permissions is not supported
+            System.out.println("Setting directory permissions not supported, skipping test");
+        }
+    }
+
+    @Test
+    @DisplayName("Test mainWithScanner with short password")
+    void testMainWithScannerShortPassword() {
+        // Enable silent mode
+        FileEncryptor.setSilentMode(true);
+
+        // Prepare input with short password
+        String input = String.format("encrypt\n%s\n%s\n%s\n",
+                inputFile.toString(),
+                encryptedFile.toString(),
+                "short");  // Password too short
+
+        // Redirect System.err
+        PrintStream originalErr = System.err;
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(errContent));
+
+        try {
+            // Execute the method
+            Scanner scanner = new Scanner(new ByteArrayInputStream(input.getBytes()));
+            FileEncryptor.mainWithScanner(scanner);
+
+            // Verify the error message
+            assertTrue(errContent.toString().contains("Password must be at least 8 characters long"));
+
+            // Verify no file was created
+            assertFalse(Files.exists(encryptedFile));
+        } finally {
+            System.setErr(originalErr);
+            FileEncryptor.setSilentMode(false);
+        }
+    }
+
+    @Test
+    @DisplayName("Test encryption/decryption with empty blocks")
+    void testEmptyBlocks() throws Exception {
+        // Create a file with specific patterns that might result in null returns from cipher.update
+        Path specialFile = tempDir.resolve("special.txt");
+
+        // Create alternating blocks of data and zeros
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        for (int i = 0; i < 10; i++) {
+            // Add a block of random data
+            byte[] randomBlock = new byte[16]; // AES block size
+            new java.security.SecureRandom().nextBytes(randomBlock);
+            baos.write(randomBlock);
+
+            // Add a block of zeros (might result in a null return from cipher.update)
+            baos.write(new byte[16]);
+        }
+
+        Files.write(specialFile, baos.toByteArray());
+
+        // Encrypt and decrypt the special file
+        Path encryptedSpecial = tempDir.resolve("special.enc");
+        Path decryptedSpecial = tempDir.resolve("special.dec");
+
+        FileEncryptor.encryptFile(specialFile.toString(), encryptedSpecial.toString(), TEST_PASSWORD);
+        FileEncryptor.decryptFile(encryptedSpecial.toString(), decryptedSpecial.toString(), TEST_PASSWORD);
+
+        // Verify the content matches
+        assertArrayEquals(Files.readAllBytes(specialFile), Files.readAllBytes(decryptedSpecial));
+    }
+
+    @Test
+    @DisplayName("Test main method with improved test.mode handling")
+    void testMainMethodWithTestMode() {
+        // Save original streams
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+        InputStream originalIn = System.in;
+
+        try {
+            // Set test mode property and enable silent mode
+            System.setProperty("test.mode", "true");
+            FileEncryptor.setSilentMode(true);
+
+            // Prepare minimal input
+            String input = String.format("encrypt\n%s\n%s\n%s\n",
+                    inputFile.toString(),
+                    encryptedFile.toString(),
+                    TEST_PASSWORD);
+
+            // Redirect input and output
+            System.setIn(new ByteArrayInputStream(input.getBytes()));
+            ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+            System.setOut(new PrintStream(outContent));
+
+            // Call main method
+            FileEncryptor.main(new String[]{});
+
+            // Just verify file was created
+            assertTrue(Files.exists(encryptedFile), "Encrypted file should exist");
+
+        } finally {
+            // Restore original streams and clear property
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+            System.setIn(originalIn);
+            System.clearProperty("test.mode");
+            FileEncryptor.setSilentMode(false);
+        }
+    }
+
+    @Test
+    @DisplayName("Test decryption of truncated file")
+    void testDecryptionOfTruncatedFile() throws Exception {
+        // Create a completely empty file
+        Path emptyFile = tempDir.resolve("empty.enc");
+        Files.createFile(emptyFile);
+
+        // Try to decrypt it
+        IOException exception = assertThrows(IOException.class, () ->
+                FileEncryptor.decryptFile(
+                        emptyFile.toString(),
+                        decryptedFile.toString(),
+                        TEST_PASSWORD
+                )
+        );
+
+        // Check error message
+        assertEquals("Decryption failed", exception.getMessage());
+        assertEquals("Unsupported version: -1", exception.getCause().getMessage());
     }
 }
