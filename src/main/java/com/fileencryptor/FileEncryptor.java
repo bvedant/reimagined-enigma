@@ -198,7 +198,7 @@ public final class FileEncryptor {
         // Get password strength and provide feedback if not in silent mode
         if (!silentMode) {
             PasswordStrength strength = evaluatePasswordStrength(password);
-            System.out.println("Password strength: " + strength.getMessage());
+            System.out.println("Password strength: " + strength + " - " + strength.getMessage());
         }
     }
 
@@ -238,9 +238,9 @@ public final class FileEncryptor {
         }
         
         // Convert score to strength level
-        if (score >= 5) {
+        if (score >= 6) {
             return PasswordStrength.STRONG;
-        } else if (score >= 3) {
+        } else if (score >= 4) {
             return PasswordStrength.MEDIUM;
         } else {
             return PasswordStrength.WEAK;
